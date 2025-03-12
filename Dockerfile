@@ -24,10 +24,10 @@ ENV DATA_DIR=/data
 ENV PYTHONUNBUFFERED=1
 
 # Install Open WebUI
-RUN uv pip install -U open-webui
+RUN uv pip install --system -U open-webui
 
 # Install wyoming-faster-whisper
-RUN uv pip install -U wyoming-faster-whisper
+RUN uv pip install --system -U wyoming-faster-whisper
 
 # Install Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh
