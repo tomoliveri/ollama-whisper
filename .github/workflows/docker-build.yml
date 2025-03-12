@@ -27,9 +27,6 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,23 +36,46 @@ jobs:
       - name: Check for updates
         id: check-versions
         run: |
+          # Install required packages
+          pip install packaging
+          
           # Fetch the latest versions and compare with stored versions
+          echo "Fetching latest versions..."
           LATEST_OPEN_WEBUI=$(pip index versions open-webui | grep -m 1 'open-webui' | awk '{print $2}' | tr -d '()')
           LATEST_WYOMING_WHISPER=$(pip index versions wyoming-faster-whisper | grep -m 1 'wyoming-faster-whisper' | awk '{print $2}' | tr -d '()')
           
           # Get the latest Ollama version
           LATEST_OLLAMA=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | jq -r '.tag_name')
           
+          echo "Latest versions detected:"
+          echo "Open WebUI: $LATEST_OPEN_WEBUI"
+          echo "Wyoming Whisper: $LATEST_WYOMING_WHISPER"
+          echo "Ollama: $LATEST_OLLAMA"
+          
           # Read current versions from the versions.json file or create it if it doesn't exist
           if [ -f "./versions.json" ]; then
             CURRENT_OPEN_WEBUI=$(jq -r '.open_webui' versions.json)
             CURRENT_WYOMING_WHISPER=$(jq -r '.wyoming_whisper' versions.json)
             CURRENT_OLLAMA=$(jq -r '.ollama' versions.json)
+            
+            echo "Current stored versions:"
+            echo "Open WebUI: $CURRENT_OPEN_WEBUI"
+            echo "Wyoming Whisper: $CURRENT_WYOMING_WHISPER"
+            echo "Ollama: $CURRENT_OLLAMA"
           else
+            echo "No versions.json found, creating initial version"
             CURRENT_OPEN_WEBUI="0.0.0"
             CURRENT_WYOMING_WHISPER="0.0.0"
             CURRENT_OLLAMA="0.0.0"
             echo '{"open_webui":"0.0.0","wyoming_whisper":"0.0.0","ollama":"0.0.0"}' > versions.json
+          fi
+          
+          # For the first run, always trigger a build
+          if [ "$CURRENT_OPEN_WEBUI" = "0.0.0" ] && [ "$CURRENT_WYOMING_WHISPER" = "0.0.0" ] && [ "$CURRENT_OLLAMA" = "0.0.0" ]; then
+            echo "First run detected, forcing build"
+            FORCE_BUILD="true"
+          else
+            FORCE_BUILD="false"
           fi
           
           # Compare versions to determine if updates are needed
@@ -64,21 +84,27 @@ jobs:
           OLLAMA_UPDATED="false"
           
           if [ "$LATEST_OPEN_WEBUI" != "$CURRENT_OPEN_WEBUI" ]; then
+            echo "Open WebUI update detected"
             OPEN_WEBUI_UPDATED="true"
           fi
           
           if [ "$LATEST_WYOMING_WHISPER" != "$CURRENT_WYOMING_WHISPER" ]; then
+            echo "Wyoming Whisper update detected"
             WYOMING_WHISPER_UPDATED="true"
           fi
           
           if [ "$LATEST_OLLAMA" != "$CURRENT_OLLAMA" ]; then
+            echo "Ollama update detected"
             OLLAMA_UPDATED="true"
           fi
           
           # Determine if a build is needed
           BUILD_NEEDED="false"
-          if [ "$OPEN_WEBUI_UPDATED" = "true" ] || [ "$WYOMING_WHISPER_UPDATED" = "true" ] || [ "$OLLAMA_UPDATED" = "true" ]; then
+          if [ "$OPEN_WEBUI_UPDATED" = "true" ] || [ "$WYOMING_WHISPER_UPDATED" = "true" ] || [ "$OLLAMA_UPDATED" = "true" ] || [ "$FORCE_BUILD" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Build needed: true"
             BUILD_NEEDED="true"
+          else
+            echo "Build needed: false (no updates detected)"
           fi
           
           # Update versions.json with new versions
@@ -86,6 +112,12 @@ jobs:
             '.open_webui = $ow | .wyoming_whisper = $ww | .ollama = $ol' \
             versions.json > updated_versions.json
           mv updated_versions.json versions.json
+          
+          # If manually triggered or first run, always set build_needed to true
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual workflow trigger detected, forcing build"
+            BUILD_NEEDED="true"
+          fi
           
           # Set outputs for the next job
           echo "open_webui_updated=$OPEN_WEBUI_UPDATED" >> $GITHUB_OUTPUT
@@ -98,28 +130,47 @@ jobs:
       
       - name: Commit and push updated versions.json
         if: steps.check-versions.outputs.build_needed == 'true'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add versions.json
-          git commit -m "Update dependency versions [skip ci]"
-          git push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update dependency versions [skip ci]"
+          file_pattern: 'versions.json'
 
   build-and-push:
     needs: check-updates
     if: ${{ needs.check-updates.outputs.build_needed == 'true' }}
     runs-on: ubuntu-latest
+    environment: Dockerhub
+    
+    # Add this step to debug why the job might be skipped
+    env:
+      BUILD_NEEDED: ${{ needs.check-updates.outputs.build_needed }}
+      OW_UPDATED: ${{ needs.check-updates.outputs.open_webui_updated }}
+      WW_UPDATED: ${{ needs.check-updates.outputs.wyoming_whisper_updated }}
+      OL_UPDATED: ${{ needs.check-updates.outputs.ollama_updated }}
     
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
+      - name: Debug secrets availability
+        run: |
+          # Don't print the actual values, just check if they're set
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
+            echo "DOCKERHUB_USERNAME is set"
+          else
+            echo "DOCKERHUB_USERNAME is NOT set"
+          fi
+          
+          if [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "DOCKERHUB_TOKEN is set"
+          else
+            echo "DOCKERHUB_TOKEN is NOT set"
+          fi
       
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -170,9 +221,9 @@ jobs:
           
           Last updated: $(date +'%Y-%m-%d')
           EOL
-          
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add README.md
-          git commit -m "Update README with new versions [skip ci]"
-          git push
+      
+      - name: Commit README changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update README with new versions [skip ci]"
+          file_pattern: 'README.md'
