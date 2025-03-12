@@ -9,11 +9,12 @@ RUN apt-get update && apt-get install -y \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Create .local/bin directory and add to PATH
+RUN mkdir -p /root/.local/bin
+ENV PATH="/root/.local/bin:${PATH}"
+
 # Install uv for Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Add uv to PATH
-ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Set up working directory
 WORKDIR /app
