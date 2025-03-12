@@ -1,0 +1,173 @@
+name: Build and Push Docker Image
+
+on:
+  schedule:
+    # Run weekly on Sunday at midnight
+    - cron: '0 0 * * 0'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+  # Optional: Trigger on releases of the dependencies
+  repository_dispatch:
+    types: [dependency-release]
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    outputs:
+      open_webui_updated: ${{ steps.check-versions.outputs.open_webui_updated }}
+      wyoming_whisper_updated: ${{ steps.check-versions.outputs.wyoming_whisper_updated }}
+      ollama_updated: ${{ steps.check-versions.outputs.ollama_updated }}
+      build_needed: ${{ steps.check-versions.outputs.build_needed }}
+      open_webui_version: ${{ steps.check-versions.outputs.open_webui_version }}
+      wyoming_whisper_version: ${{ steps.check-versions.outputs.wyoming_whisper_version }}
+      ollama_version: ${{ steps.check-versions.outputs.ollama_version }}
+    
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Check for updates
+        id: check-versions
+        run: |
+          # Fetch the latest versions and compare with stored versions
+          LATEST_OPEN_WEBUI=$(pip index versions open-webui | grep -m 1 'open-webui' | awk '{print $2}' | tr -d '()')
+          LATEST_WYOMING_WHISPER=$(pip index versions wyoming-faster-whisper | grep -m 1 'wyoming-faster-whisper' | awk '{print $2}' | tr -d '()')
+          
+          # Get the latest Ollama version
+          LATEST_OLLAMA=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | jq -r '.tag_name')
+          
+          # Read current versions from the versions.json file or create it if it doesn't exist
+          if [ -f "./versions.json" ]; then
+            CURRENT_OPEN_WEBUI=$(jq -r '.open_webui' versions.json)
+            CURRENT_WYOMING_WHISPER=$(jq -r '.wyoming_whisper' versions.json)
+            CURRENT_OLLAMA=$(jq -r '.ollama' versions.json)
+          else
+            CURRENT_OPEN_WEBUI="0.0.0"
+            CURRENT_WYOMING_WHISPER="0.0.0"
+            CURRENT_OLLAMA="0.0.0"
+            echo '{"open_webui":"0.0.0","wyoming_whisper":"0.0.0","ollama":"0.0.0"}' > versions.json
+          fi
+          
+          # Compare versions to determine if updates are needed
+          OPEN_WEBUI_UPDATED="false"
+          WYOMING_WHISPER_UPDATED="false"
+          OLLAMA_UPDATED="false"
+          
+          if [ "$LATEST_OPEN_WEBUI" != "$CURRENT_OPEN_WEBUI" ]; then
+            OPEN_WEBUI_UPDATED="true"
+          fi
+          
+          if [ "$LATEST_WYOMING_WHISPER" != "$CURRENT_WYOMING_WHISPER" ]; then
+            WYOMING_WHISPER_UPDATED="true"
+          fi
+          
+          if [ "$LATEST_OLLAMA" != "$CURRENT_OLLAMA" ]; then
+            OLLAMA_UPDATED="true"
+          fi
+          
+          # Determine if a build is needed
+          BUILD_NEEDED="false"
+          if [ "$OPEN_WEBUI_UPDATED" = "true" ] || [ "$WYOMING_WHISPER_UPDATED" = "true" ] || [ "$OLLAMA_UPDATED" = "true" ]; then
+            BUILD_NEEDED="true"
+          fi
+          
+          # Update versions.json with new versions
+          jq --arg ow "$LATEST_OPEN_WEBUI" --arg ww "$LATEST_WYOMING_WHISPER" --arg ol "$LATEST_OLLAMA" \
+            '.open_webui = $ow | .wyoming_whisper = $ww | .ollama = $ol' \
+            versions.json > updated_versions.json
+          mv updated_versions.json versions.json
+          
+          # Set outputs for the next job
+          echo "open_webui_updated=$OPEN_WEBUI_UPDATED" >> $GITHUB_OUTPUT
+          echo "wyoming_whisper_updated=$WYOMING_WHISPER_UPDATED" >> $GITHUB_OUTPUT
+          echo "ollama_updated=$OLLAMA_UPDATED" >> $GITHUB_OUTPUT
+          echo "build_needed=$BUILD_NEEDED" >> $GITHUB_OUTPUT
+          echo "open_webui_version=$LATEST_OPEN_WEBUI" >> $GITHUB_OUTPUT
+          echo "wyoming_whisper_version=$LATEST_WYOMING_WHISPER" >> $GITHUB_OUTPUT
+          echo "ollama_version=$LATEST_OLLAMA" >> $GITHUB_OUTPUT
+      
+      - name: Commit and push updated versions.json
+        if: steps.check-versions.outputs.build_needed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add versions.json
+          git commit -m "Update dependency versions [skip ci]"
+          git push
+
+  build-and-push:
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.build_needed == 'true' }}
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-suite:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-suite:${{ needs.check-updates.outputs.open_webui_version }}-${{ needs.check-updates.outputs.wyoming_whisper_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Update README.md
+        run: |
+          cat > README.md << EOL
+          # AI Suite Docker Image
+          
+          This Docker image combines:
+          
+          - Open WebUI v${{ needs.check-updates.outputs.open_webui_version }}
+          - Wyoming Faster Whisper v${{ needs.check-updates.outputs.wyoming_whisper_version }}
+          - Ollama v${{ needs.check-updates.outputs.ollama_version }}
+          
+          ## Ports
+          
+          - 3000/8080: Open WebUI
+          - 10300: Wyoming Faster Whisper
+          - 11434: Ollama
+          
+          ## Usage
+          
+          \`\`\`bash
+          docker run -d \\
+            -p 3000:3000 \\
+            -p 10300:10300 \\
+            -p 11434:11434 \\
+            -v ollama-data:/root/.ollama \\
+            -v open-webui-data:/data/open-webui \\
+            -v whisper-data:/data/wyoming-faster-whisper \\
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-suite:latest
+          \`\`\`
+          
+          Last updated: $(date +'%Y-%m-%d')
+          EOL
+          
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git commit -m "Update README with new versions [skip ci]"
+          git push
