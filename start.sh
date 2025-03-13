@@ -1,24 +1,20 @@
 #!/bin/bash
 set -e
 
-# Start Ollama in the background
 echo "Starting Ollama..."
-ollama serve &
+nohup ollama serve > /var/log/ollama.log 2>&1 &
 
-# Start wyoming-faster-whisper in the background
 echo "Starting Wyoming Faster Whisper..."
-python -m wyoming_faster_whisper \
+# Explicitly bind to 0.0.0.0 instead of default localhost
+nohup wyoming-faster-whisper \
   --model base \
-  --language auto \
   --data-dir /data/wyoming-faster-whisper \
-  --uri tcp://0.0.0.0:10300 &
+  --uri 'tcp://0.0.0.0:8000' > /var/log/whisper.log 2>&1 &
 
-# Wait a bit to ensure Ollama is running
-sleep 5
-
-# Start Open WebUI
 echo "Starting Open WebUI..."
-DATA_DIR=/data/open-webui open-webui serve
+# Open WebUI binds to all interfaces by default
+cd /usr/local/lib/python3.11/site-packages/open_webui
+python -m open_webui.main
 
-# Keep the container running
-wait
+# Keep container running if the main process exits
+# tail -f /dev/null
