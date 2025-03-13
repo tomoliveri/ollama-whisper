@@ -27,14 +27,14 @@ ENV OLLAMA_HOST=0.0.0.0:11434
 # Configure Open WebUI to connect to Ollama using the internal container address
 ENV OLLAMA_API_BASE_URL=http://localhost:11434/api
 
+# Install correct tokenizers version first
+RUN uv pip install --system 'tokenizers>=0.21,<0.22'
+
 # Install Open WebUI
 RUN uv pip install --system -U open-webui
 
 # Install wyoming-faster-whisper
 RUN uv pip install --system -U wyoming-faster-whisper
-
-# Add transformers
-RUN uv pip install transformers -U
 
 # Install Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh
