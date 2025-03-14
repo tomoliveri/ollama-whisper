@@ -29,7 +29,7 @@ WORKDIR /app
 
 # Install Python packages (specific version first, then others)
 RUN uv pip install --system 'tokenizers>=0.21,<0.22' \
-    && uv pip install --system -U open-webui wyoming-faster-whisper \
+    && uv pip install --system -U open-webui wyoming-faster-whisper
 
 # Copy startup script and make executable
 COPY start.sh /app/start.sh
