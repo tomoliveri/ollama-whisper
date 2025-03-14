@@ -12,9 +12,5 @@ nohup wyoming-faster-whisper \
   --uri 'tcp://0.0.0.0:8000' > /var/log/whisper.log 2>&1 &
 
 echo "Starting Open WebUI..."
-# Open WebUI binds to all interfaces by default
-cd /usr/local/lib/python3.11/site-packages/open_webui
+# Use python -m to run the module properly
 python -m open_webui.main
-
-# Keep container running if the main process exits
-# tail -f /dev/null
