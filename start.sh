@@ -1,5 +1,11 @@
 #!/bin/bash
 set -e
+
+# Just reinstall Ollama to pick up GPU dependencies
+echo "Reinstalling Ollama to enable GPU support..."
+curl -fsSL https://ollama.com/install.sh | sh
+echo "Ollama reinstalled."
+
 echo "Starting Ollama..."
 nohup ollama serve > /var/log/ollama.log 2>&1 &
 echo "Starting Wyoming Faster Whisper..."
