@@ -1,10 +1,15 @@
 #!/bin/bash
 set -e
 
-# Just reinstall Ollama to pick up GPU dependencies
+# Reinstall Ollama to pick up GPU dependencies
 echo "Reinstalling Ollama to enable GPU support..."
 curl -fsSL https://ollama.com/install.sh | sh
 echo "Ollama reinstalled."
+
+# Reinstall Open WebUI
+echo "Reinstalling Open WebUI..."
+uv pip install --system -U open-webui
+echo "Open WebUI reinstalled."
 
 echo "Starting Ollama..."
 nohup ollama serve > /var/log/ollama.log 2>&1 &
