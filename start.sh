@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Install hardware detection tools first
+echo "Installing hardware detection tools..."
+apt-get update && apt-get install -y --no-install-recommends lshw pciutils
+echo "Hardware detection tools installed."
+
 # Reinstall Ollama to pick up GPU dependencies
 echo "Reinstalling Ollama to enable GPU support..."
 curl -fsSL https://ollama.com/install.sh | sh
