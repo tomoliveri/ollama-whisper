@@ -25,4 +25,4 @@ docker run -d \
   tomoliveri/ai-suite:latest
 ```
 
-Last updated: 2025-03-14
+Last updated: 2025-03-15
