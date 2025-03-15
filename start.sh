@@ -13,4 +13,4 @@ nohup wyoming-faster-whisper \
 
 echo "Starting Open WebUI..."
 # Use python -m to run the module properly
-python -m open_webui.main
+python -m open_webui
