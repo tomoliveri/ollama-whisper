@@ -4,7 +4,7 @@ This Docker image combines:
 
 - Open WebUI v0.6.15
 - Wyoming Faster Whisper v2.0.0
-- Ollama vv0.9.5
+- Ollama vv0.9.6
 
 ## Ports
 
@@ -25,4 +25,4 @@ docker run -d \
   tomoliveri/ai-suite:latest
 ```
 
-Last updated: 2025-07-06
+Last updated: 2025-07-13
