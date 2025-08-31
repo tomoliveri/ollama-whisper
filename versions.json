@@ -1,5 +1,5 @@
 {
-  "open_webui": "0.6.25",
+  "open_webui": "0.6.26",
   "wyoming_whisper": "2.0.0",
-  "ollama": "v0.11.6"
+  "ollama": "v0.11.8"
 }
